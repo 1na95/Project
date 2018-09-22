@@ -23,6 +23,7 @@
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "libmysql.lib")
+#define _CRT_SECURE_NO_WARNINGS
 
 void RefreshDirectory(LPTSTR);
 void RefreshTree(LPTSTR);
@@ -31,7 +32,20 @@ void GetDirList(char* lpDir, int indent);
 void printByIndentLevel(char* str, int indent);
 char* concatPath(char* prefix, char* path);
 
+
 using namespace std;
+
+HANDLE hDir = CreateFileW(L"D:\\", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+	0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+CONST DWORD cbBuffer = 1024 * 1024;
+BYTE* pBuffer = (PBYTE)malloc(cbBuffer);
+BOOL bWatchSubtree = FALSE;
+DWORD dwNotifyFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
+FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION;
+DWORD bytesReturned;
+WCHAR temp[MAX_PATH] = { 0 };
+
 
 /*void _tmain(int argc, TCHAR *argv[])
 {
@@ -55,28 +69,38 @@ using namespace std;
 #define DB_PASS "1234"
 #define DB_NAME "USBSecure"
 
-void getMySerialNum(char* currentSerial);
+void getMySerialNum(char* currentSerial, char serialPath[255]);
 BOOL isRegisterdSerial(char* currentSerial, char* DBSerial);
 void detection(char* pFolderName, char* pMySerial);
 void getFolderName(char* currentSerial, char* folderName);
-void connectMysql();
+//void connectMysql();
+
+
 
 int main()
 {
-	char serial_buffer[256];
-	char mySerial[256];
+	char serial_buffer[255];
+	char mySerial[255];
 	char* pMySerial = mySerial;
-	char DBSerial[256];
+	char DBSerial[255];
 	char* pDBSerial = DBSerial;
-	char folderName[256];
+	char folderName[255];
 	char* pFolderName = folderName;
+	
+	printf("\n");
+	printf(">>>>>>>>>> Getting Serial Path <<<<<<<<<<\n");
+	char serialPath[255];    // 파일을 읽을 때 사용할 임시 공간
+	FILE *fp = fopen("serialPath.txt", "r");    // 파일을 읽기 모드로 열기.  
+	fgets(serialPath, sizeof(serialPath), fp);    // 문자열을 읽음
+	fclose(fp);    // 파일 포인터 닫기
+	printf("Serial Path : %s\n", serialPath);    //파일의 내용 출력
 
-	getMySerialNum(pMySerial);
+	getMySerialNum(pMySerial, serialPath);
 
 	printf("\tREAD  REGISTER\n");
 	printf("\tKEY   [HKEY_LOCAL_MACHINE"
 		"\\SYSTEM\\ControlSet001\\Enum\\USB ] \n");
-	printf("\tVALUE [cygdrive prefix] =  [%s]\n", mySerial);
+	printf("\tVALUE [HardwareID] =  [%p]\n", mySerial);
 
 	if (isRegisterdSerial(pMySerial, pMySerial) == TRUE) {
 		getFolderName(pMySerial, pFolderName);
@@ -92,37 +116,50 @@ int main()
 
 // 출처: http://bmfrog.tistory.com/entry/레지스트리-키값을-읽는-예제 [일타삼피]
 
-void getMySerialNum(char* currentSerial) {
+void getMySerialNum(char* currentSerial, char serialPath[255]) {
 	// Get current USB serial num
+	printf("\n>>>>>>>>>> Getting USB Serial <<<<<<<<<<\n");
+
 	LONG    ret;
 	HKEY    hKey;
-	char    data_buffer[256];
+	TCHAR    data_buffer[255];
 	DWORD   data_type;
 	DWORD   data_size;
+	//LPCSTR	regPath = "SYSTEM\CurrentControlSet\Enum\USB\VID_04E8&PID_61F4\MSFT301234567AE9B2\\HardwareID";
 
+	printf("Serial Path : %s\n", (LPCSTR)serialPath);
 	ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE,                                // 키 값  
-		(LPCSTR)"SYSTEM\ControlSet001\Control\DeviceClasses\{53f56307-b6bf-11d0-94f2-00a0c91efb8b}\##?#SCSI#Disk&Ven_Samsung&Prod_Portable_SSD_T3#000000#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}\DeviceInstance",    // 서브 키값   
+		(LPCSTR)serialPath,    // 서브 키값   
 		0,                                                  // 옵션 항상 0  
-		KEY_QUERY_VALUE,                                    // 접근 권한  
+		KEY_READ | KEY_WOW64_64KEY,                                    // 접근 권한  
 		&hKey                                               // 키 핸들  
 	);
 
+	printf("ret : %ld\n", ret);
+
 	if (ret == ERROR_SUCCESS)
 	{
+		printf("\n>>>>>>>>>> Getting Registry Value <<<<<<<<<<\n");
 		memset(data_buffer, 0, sizeof(data_buffer));
 		data_size = sizeof(data_buffer);
 		RegQueryValueEx(hKey,                // RegOpenKeyEx에 얻어진 키 핸들  
-			(LPCSTR)"DeviceInstance",                    // 키 안에 값 이름   
+			TEXT("HarwareID"),                    // 키 안에 값 이름   
 			0,                                    // 옵션 항상 0   
 			&data_type,                           // 얻어진 데이터 타입  
-			(BYTE*)data_buffer,                  // 얻어진 데이터  
+			(LPBYTE)data_buffer,                  // 얻어진 데이터  
 			(DWORD *)&data_size                  // 얻어진 데이터 크기   
 		);
 
 		currentSerial = data_buffer;
-
 		RegCloseKey(hKey);
 	}
+	else {
+		printf("키 오픈 실패\n");
+	}
+
+	printf("\tKEY   [HKEY_LOCAL_MACHINE"
+		"\\SYSTEM\\ControlSet001\\Enum\\USB ] \n");
+	printf("\tVALUE [HardwareID] =  [%s]\n", *data_buffer);
 }
 
 void getDBSerialNum(char* DBSerial) {
@@ -132,7 +169,7 @@ void getDBSerialNum(char* DBSerial) {
 void getFolderName(char* currentSerial, char* folderName) {
 	getcwd(folderName, 256);
 	printf("\n\t...Trying to get drive name...\n");
-	printf("\t Drive Path : %s", (LPTSTR)folderName);
+	printf("\t Drive Path : %s\n", (LPCSTR)folderName);
 }
 
 BOOL isRegisterdSerial(char* currentSerial, char* DBSerial) {
