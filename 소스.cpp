@@ -12,19 +12,15 @@
 #define DB_NAME "usbsecure"
 
 #pragma warning(disable:4996)
-//#pragma comment(lib, "user32.lib")
-//#pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "libmysql.lib")
 #define _CRT_SECURE_NO_WARNINGS
 
-BOOL compareSerial(MYSQL* connection, MYSQL conn, char serial[100]);
+BOOL compareSerial(MYSQL* connection, MYSQL conn, char serial[100], char id[20], char serialNum[10]);
 void getMySerialNum(char currentSerial[100], char serialPath[255]);
-char *replaceAll(char *s, const char *olds, const char *news);
 BOOL getFolderName(char* folderName);
-BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn);
+BOOL directoryChange(char id[20], char serialNum[10], MYSQL* connection, MYSQL conn);
 void getTime(char currentTIme[100]);
-BOOL transChange(MYSQL* connection, MYSQL conn, char serial[100], char content[100], char currentTime[100]);
-void replaceChar(char serial[100]);
+BOOL transChange(MYSQL* connection, MYSQL conn, char id[20], char serialNum[10], char content[200], char currentTime[100]);
 
 int main() {
 
@@ -35,13 +31,15 @@ int main() {
 	int*	pquery_stat = &query_stat;
 
 	char id[20];
+	char* pId = id;
+
 	char serial[100];
 	char* pSerial = serial;
+
 	char content[200];
 	char time[100];
 	char query[255];
 	char dbSerial[100] = { 0 };
-	char* pId = id;
 	char* pContent = content;
 	char* pTime = time;
 	char* pBuffer;
@@ -51,6 +49,9 @@ int main() {
 
 	char folderName[255];	// 현재 경로를 저장할 배열
 	char* pFolderName = folderName;
+
+	char serialNum[10];
+	char* pSerialNum = serialNum;
 
 	mysql_init(&conn);
 
@@ -75,19 +76,16 @@ int main() {
 
 	fgets(serial, sizeof(serial), fp);    // 문자열을 읽음
 	fclose(fp);    // 파일 포인터 닫기
-	/*strcat(serialPath, tmpSerialPath);
-	printf("Serial Path : %s\n", serialPath);    //파일의 내용 출력
-
-	getMySerialNum(pSerial, serialPath);*/
+	printf("나의 시리얼 : %s\n", serial);
 
 	// 등록된 시리얼이면 디렉터리 변경 감시 시작
-	if (compareSerial(connection, conn, pSerial) == TRUE) {
-		replaceChar(serial);
+	if (compareSerial(connection, conn, pSerial, pId, pSerialNum) == TRUE) {
+		printf("%s %s\n", serialNum, id);
 		if (!getFolderName(pFolderName)) {
 			MessageBox(NULL, "현재 경로를 얻지 못했습니다.", "Error", MB_OK);
 			return 1;
 		}
-		if (!directoryChange(pSerial, connection, conn)) {
+		if (!directoryChange(pId, pSerialNum, connection, conn)) {
 			MessageBox(NULL, "파일 변경을 감지할 수 없습니다.", "Error", MB_OK);
 			return 1;
 		}
@@ -99,12 +97,12 @@ int main() {
 
 	while (1);}
 
-BOOL compareSerial(MYSQL* connection, MYSQL conn, char serial[100]) {
+BOOL compareSerial(MYSQL* connection, MYSQL conn, char serial[100], char id[20], char serialNum[10]) {
 	int       query_stat;
 	MYSQL_RES   *sql_result;
 	MYSQL_ROW   sql_row;
 	BOOL	 isRegisterdSerial = FALSE;
-	query_stat = mysql_query(connection, "select * from serial");
+	query_stat = mysql_query(connection, "select * from serial_num");
 
 	if (query_stat != 0)
 	{
@@ -119,8 +117,10 @@ BOOL compareSerial(MYSQL* connection, MYSQL conn, char serial[100]) {
 	{
 		if (strcmp(sql_row[0], serial) == 0) {
 			printf("등록된 USB입니다,\n");
-			printf("시리얼 : %s\n아이디 : %s\n", sql_row[0], sql_row[1]);
+			printf("시리얼 : %s\n아이디 : %s\n번호 : %s\n", sql_row[0], sql_row[1], sql_row[2]);
 			isRegisterdSerial = TRUE;
+			strcpy(id, sql_row[1]);
+			strcpy(serialNum, sql_row[2]);
 			return TRUE;
 		}
 	}
@@ -172,37 +172,6 @@ void getMySerialNum(char currentSerial[100], char serialPath[255]) {
 	}
 }
 
-char *replaceAll(char *s, const char *olds, const char *news) {
-	char *result, *sr;
-	size_t i, count = 0;
-	size_t oldlen = strlen(olds); if (oldlen < 1) return s;
-	size_t newlen = strlen(news);
-
-	if (newlen != oldlen) {
-		for (i = 0; s[i] != '\0';) {
-			if (memcmp(&s[i], olds, oldlen) == 0) count++, i += oldlen;
-			else i++;
-		}
-	}
-	else i = strlen(s);
-
-	result = (char *)malloc(i + 1 + count * (newlen - oldlen));
-	if (result == NULL) return NULL;
-
-	sr = result;
-	while (*s) {
-		if (memcmp(s, olds, oldlen) == 0) {
-			memcpy(sr, news, newlen);
-			sr += newlen;
-			s += oldlen;
-		}
-		else *sr++ = *s++;
-	}
-	*sr = '\0';
-
-	return result;
-}
-
 BOOL getFolderName(char* folderName) {
 	if (getcwd(folderName, 256)) {
 		printf("\n>>>>>>>>>>Trying to get drive name<<<<<<<<<<\n");
@@ -212,8 +181,9 @@ BOOL getFolderName(char* folderName) {
 	else FALSE;
 }
 
-BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn) {
-	char *pSerial = serial;
+BOOL directoryChange(char id[20], char serialNum[10], MYSQL* connection, MYSQL conn) {
+	char *pId = id;
+	char *pSerialNum = serialNum;
 	char folderName[255];
 	char* pFolderName = folderName;
 	getcwd(pFolderName, 256);
@@ -289,7 +259,7 @@ BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn) {
 			pfni = (FILE_NOTIFY_INFORMATION*)((PBYTE)pfni + pfni->NextEntryOffset);
 			
 			StringCbCopyNW(temp, sizeof(temp), pfni->FileName, pfni->FileNameLength);
-			
+			wprintf(L"파일 이름 : %s\n", pfni->FileName);
 
 			// temp wchar -> char
 			wcstombs(filename, temp, 100);
@@ -299,14 +269,15 @@ BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn) {
 
 			// 시리얼, 내용, 시간을 DB로 전송
 			printf(">>>>>>>>>> 전송할 내용 <<<<<<<<<<\n");
-			wprintf(L"파일 이름 : %s\n", temp);
-			printf("시리얼 : %s\n", serial);
+			
+			printf("아이디 : %s\n", id);
+			printf("시리얼 번호 : %s\n", serialNum);
 			printf("내용 : %s\n", content);
 			// 시간함수
 			getTime(pCurrentTime);
 			printf("시간 : %s\n", currentTime);
 
-			transChange(connection, conn, pSerial, pContent, pCurrentTime);
+			transChange(connection, conn, pId, pSerialNum, pContent, pCurrentTime);
 
 		} while (pfni->NextEntryOffset > 0);
 	}
@@ -362,13 +333,13 @@ void getTime(char currentTime[100]) {
 	strcpy(currentTime, mt);
 }
 
-BOOL transChange(MYSQL* connection, MYSQL conn, char serial[100], char content[100], char currentTime[100]) {
+BOOL transChange(MYSQL* connection, MYSQL conn, char id[20], char serialNum[10], char content[200], char currentTime[100]) {
 	char	query[255];
 	int       query_stat;
 
 	sprintf(query, "insert into board values "
-		"('%s', '%s', '%s')",
-		serial, content, currentTime);
+		"('%s', '%s', '%s', '%s')",
+		id, serialNum, content, currentTime);
 
 	query_stat = mysql_query(connection, query);
 
@@ -377,24 +348,4 @@ BOOL transChange(MYSQL* connection, MYSQL conn, char serial[100], char content[1
 		fprintf(stderr, "Mysql query error : %s", mysql_error(&conn));
 		return FALSE;
 	}
-}
-
-void replaceChar(char serial[100]) {
-	int i, j;
-
-	char str1[100] = { 0 };
-
-	strcpy(str1, serial);
-
-	char str2[100];
-
-		for (i = 0; i < strlen(str1); i++) { // 역슬래시 탐색
-			if (str1[i] == '\\') {
-				for (j = 0; j <= i; j++) {
-					str2[j] = str1[j];
-				}
-				serial[i + 1] = '\\';
-				i++;
-			}
-		}
 }
