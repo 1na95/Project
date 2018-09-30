@@ -6,7 +6,7 @@
 #include <strsafe.h>
 #include <Windows.h>
 
-#define DB_HOST "127.0.0.1"
+#define DB_HOST "127.0.0.1" //"172.30.1.24"
 #define DB_USER "guest"
 #define DB_PASS "1234"
 #define DB_NAME "usbsecure"
@@ -24,7 +24,7 @@ BOOL getFolderName(char* folderName);
 BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn);
 void getTime(char currentTIme[100]);
 BOOL transChange(MYSQL* connection, MYSQL conn, char serial[100], char content[100], char currentTime[100]);
-void replaceChar(char serial[255]);
+void replaceChar(char serial[100]);
 
 int main() {
 
@@ -73,12 +73,12 @@ int main() {
 	printf(">>>>>>>>>> Getting Serial Path <<<<<<<<<<\n");
 	FILE *fp = fopen("serialPath.txt", "r");    // 파일을 읽기 모드로 열기.  
 
-	fgets(tmpSerialPath, sizeof(tmpSerialPath), fp);    // 문자열을 읽음
+	fgets(serial, sizeof(serial), fp);    // 문자열을 읽음
 	fclose(fp);    // 파일 포인터 닫기
-	strcat(serialPath, tmpSerialPath);
+	/*strcat(serialPath, tmpSerialPath);
 	printf("Serial Path : %s\n", serialPath);    //파일의 내용 출력
 
-	getMySerialNum(pSerial, serialPath);
+	getMySerialNum(pSerial, serialPath);*/
 
 	// 등록된 시리얼이면 디렉터리 변경 감시 시작
 	if (compareSerial(connection, conn, pSerial) == TRUE) {
@@ -268,44 +268,38 @@ BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn) {
 			switch (pfni->Action)
 			{
 			case FILE_ACTION_ADDED:
-				wprintf(L"FILE_ACTION_ADDED\n");
 				strcpy(action, "_ADDED");
 				break;
 			case FILE_ACTION_REMOVED:
-				wprintf(L"FILE_ACTION_REMOVED\n");
 				strcpy(action, "_REMOVED");
 				break;
 			case FILE_ACTION_MODIFIED:
-				wprintf(L"FILE_ACTION_MODIFIED\n");
 				strcpy(action, "_MODIFIED");
 				break;
 			case FILE_ACTION_RENAMED_OLD_NAME:
-				wprintf(L"FILE_ACTION_RENAMED_OLD_NAME\n");
 				strcpy(action, "_RENAMEDE_OLD_NAME");
 				break;
 			case FILE_ACTION_RENAMED_NEW_NAME:
-				wprintf(L"FILE_ACTION_RENAMED_NEW_NAME\n");
 				strcpy(action, "_RENAMED_NEW_NAME");
 				break;
 			default:
 				break;
 			}
 
-			//printf("FileNameLength(%d)\n", pfni->FileNameLength);
-
+			pfni = (FILE_NOTIFY_INFORMATION*)((PBYTE)pfni + pfni->NextEntryOffset);
+			
 			StringCbCopyNW(temp, sizeof(temp), pfni->FileName, pfni->FileNameLength);
+			
 
 			// temp wchar -> char
 			wcstombs(filename, temp, 100);
-			//printf("Filename : %s\n", filename);
 
 			strcpy(content, filename);
-			//printf("%s\n", content);
-
 			strcat(content, action);
 
 			// 시리얼, 내용, 시간을 DB로 전송
 			printf(">>>>>>>>>> 전송할 내용 <<<<<<<<<<\n");
+			wprintf(L"파일 이름 : %s\n", temp);
 			printf("시리얼 : %s\n", serial);
 			printf("내용 : %s\n", content);
 			// 시간함수
@@ -313,8 +307,6 @@ BOOL directoryChange(char serial[100], MYSQL* connection, MYSQL conn) {
 			printf("시간 : %s\n", currentTime);
 
 			transChange(connection, conn, pSerial, pContent, pCurrentTime);
-
-			pfni = (FILE_NOTIFY_INFORMATION*)((PBYTE)pfni + pfni->NextEntryOffset);
 
 		} while (pfni->NextEntryOffset > 0);
 	}
@@ -389,25 +381,17 @@ BOOL transChange(MYSQL* connection, MYSQL conn, char serial[100], char content[1
 
 void replaceChar(char serial[100]) {
 	int i, j;
-	char search = '\\';
-	char* result;
 
 	char str1[100] = { 0 };
-	char* pStr1 = str1;
-	int slen1;
+
 	strcpy(str1, serial);
 
 	char str2[100];
-	char* pStr2 = str2;
-	int slen2;
-
-	printf("%d\n", strlen(str1));
 
 		for (i = 0; i < strlen(str1); i++) { // 역슬래시 탐색
 			if (str1[i] == '\\') {
 				for (j = 0; j <= i; j++) {
 					str2[j] = str1[j];
-					printf("%c", str2[j]);
 				}
 				serial[i + 1] = '\\';
 				i++;
